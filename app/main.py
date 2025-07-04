@@ -4,19 +4,23 @@ import time
 import sys
 import json
 
+# Read environment variables set by Lambda
 s3_bucket = os.environ.get("S3_BUCKET")
 s3_key = os.environ.get("S3_OBJECT_KEY")
 region = os.environ.get("AWS_REGION", "us-east-1")
 
+# Validate inputs
 if not s3_bucket or not s3_key:
     print("Missing S3_BUCKET or S3_OBJECT_KEY environment variables. Exiting.")
     sys.exit(1)
 
+# Initialize AWS clients
 s3 = boto3.client("s3", region_name=region)
 textract = boto3.client("textract", region_name=region)
 
 print(f"Starting claim file processing for: s3://{s3_bucket}/{s3_key}")
 
+# Download the claim file
 local_file = "/tmp/claim_file"
 try:
     s3.download_file(s3_bucket, s3_key, local_file)
@@ -25,6 +29,7 @@ except Exception as e:
     print(f"Error downloading file: {e}")
     sys.exit(1)
 
+# Supported file types
 if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     print("File type supported. Calling Textract Async API...")
 
@@ -36,8 +41,9 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         print(f"Textract JobId: {job_id}")
     except Exception as e:
         print(f"Textract start error: {e}")
-    sys.exit(1)
+        sys.exit(1)
 
+    # Poll for job completion
     while True:
         result = textract.get_document_text_detection(JobId=job_id)
         status = result["JobStatus"]
@@ -49,18 +55,11 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         time.sleep(5)
 
     if status == "SUCCEEDED":
-        # Extract only detected lines of text
-        lines = []
-        for block in result.get("Blocks", []):
-            if block.get("BlockType") == "LINE":
-                lines.append(block.get("Text", ""))
-
-        cleaned_output = {"ExtractedTextLines": lines}
-
         output_key = f"processed/claims-extracted-data/{os.path.basename(s3_key)}_extracted.json"
         try:
-            s3.put_object(Bucket=s3_bucket, Key=output_key, Body=json.dumps(cleaned_output))
-            print(f"Cleaned Textract results saved to s3://{s3_bucket}/{output_key}")
+            clean_json = json.dumps(result, indent=2)
+            s3.put_object(Bucket=s3_bucket, Key=output_key, Body=clean_json)
+            print(f"Textract results saved to s3://{s3_bucket}/{output_key}")
         except Exception as e:
             print(f"Error saving results: {e}")
             sys.exit(1)
