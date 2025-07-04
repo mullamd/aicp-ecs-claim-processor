@@ -5,6 +5,7 @@
   "cpu": "1024",
   "memory": "2048",
   "executionRoleArn": "arn:aws:iam::461512246753:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::461512246753:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "aicp-claim-processing-container",
@@ -31,4 +32,3 @@
     }
   ]
 }
-
