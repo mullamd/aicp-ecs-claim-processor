@@ -10,6 +10,16 @@
       "name": "aicp-claim-processing-container",
       "image": "461512246753.dkr.ecr.us-east-1.amazonaws.com/aicp-claim-processing:latest",
       "essential": true,
+      "environment": [
+        {
+          "name": "S3_BUCKET",
+          "value": "aicp-claims-data"
+        },
+        {
+          "name": "S3_OBJECT_KEY",
+          "value": "raw/claim-documents/sample-claim-document.pdf"
+        }
+      ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
@@ -21,3 +31,4 @@
     }
   ]
 }
+
