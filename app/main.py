@@ -109,8 +109,8 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
             clean_data["additional_notes"] = line
             break
 
-    # Upload clean JSON to S3
-    output_key = f"claims-extracted-data/clean-claim-{claim_id}.json"
+    # Upload clean JSON to S3 (correct path)
+    output_key = f"processed/claims-extracted-data/clean-claim-{claim_id}.json"
     s3.put_object(Bucket=s3_bucket, Key=output_key, Body=json.dumps(clean_data))
     print(f"Clean claim data uploaded to s3://{s3_bucket}/{output_key}")
 else:
