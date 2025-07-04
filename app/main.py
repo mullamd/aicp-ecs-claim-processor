@@ -61,8 +61,12 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
 
     def extract_value(keyword):
         for i, line in enumerate(lines):
-            if keyword in line:
-                return line.replace(keyword, '').strip()
+            if keyword.lower() in line.lower():
+                parts = line.split(":")
+                if len(parts) > 1 and parts[1].strip():
+                    return parts[1].strip()
+                elif i + 1 < len(lines):
+                    return lines[i + 1].strip()
         return ""
 
     claim_id = extract_value("Claim ID:")
