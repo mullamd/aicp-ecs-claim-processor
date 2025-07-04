@@ -4,12 +4,11 @@ import time
 import sys
 import json
 
-# Read environment variables set by Lambda
+# Read environment variables
 s3_bucket = os.environ.get("S3_BUCKET")
 s3_key = os.environ.get("S3_OBJECT_KEY")
 region = os.environ.get("AWS_REGION", "us-east-1")
 
-# Validate inputs
 if not s3_bucket or not s3_key:
     print("Missing S3_BUCKET or S3_OBJECT_KEY environment variables. Exiting.")
     sys.exit(1)
@@ -29,7 +28,7 @@ except Exception as e:
     print(f"Error downloading file: {e}")
     sys.exit(1)
 
-# Supported file types
+# Check file type
 if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     print("File type supported. Calling Textract Async API...")
 
@@ -37,7 +36,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         response = textract.start_document_text_detection(
             DocumentLocation={"S3Object": {"Bucket": s3_bucket, "Name": s3_key}}
         )
-        job_id = response["JobId"]
+        job_id = response['JobId']
         print(f"Textract JobId: {job_id}")
     except Exception as e:
         print(f"Textract start error: {e}")
@@ -46,40 +45,73 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     # Poll for job completion
     while True:
         result = textract.get_document_text_detection(JobId=job_id)
-        status = result["JobStatus"]
-        print(f"Textract Status: {status}")
+        status = result['JobStatus']
 
-        if status in ["SUCCEEDED", "FAILED"]:
+        if status == 'SUCCEEDED':
+            print("Textract job completed successfully.")
+            break
+        elif status == 'FAILED':
+            print("Textract job failed.")
+            sys.exit(1)
+        else:
+            time.sleep(5)
+
+    # Process Textract result
+    lines = [block['Text'] for block in result['Blocks'] if block['BlockType'] == 'LINE']
+
+    def extract_value(keyword):
+        for i, line in enumerate(lines):
+            if keyword in line:
+                return line.replace(keyword, '').strip()
+        return ""
+
+    claim_id = extract_value("Claim ID:")
+    clean_data = {
+        "claim_id": claim_id,
+        "policy_number": extract_value("Policy Number:"),
+        "claimant_name": extract_value("Claimant Name:"),
+        "date_of_loss": extract_value("Date of Loss:"),
+        "type_of_claim": extract_value("Type of Claim:"),
+        "accident_location": extract_value("Accident Location:"),
+        "vehicle_details": extract_value("Vehicle Details:"),
+        "estimated_damage_cost": extract_value("Estimated Damage Cost:"),
+        "claim_amount_requested": extract_value("Claim Amount Requested:"),
+        "additional_notes": ""
+    }
+
+    # Supporting Documents and Description of Damage (multi-line)
+    desc_lines = []
+    docs_lines = []
+    capture_desc = capture_docs = False
+    for line in lines:
+        if "Description of Damage:" in line:
+            capture_desc = True
+            continue
+        if "Estimated Damage Cost:" in line:
+            capture_desc = False
+        if capture_desc and line.startswith("-"):
+            desc_lines.append(line)
+
+        if "Supporting Documents:" in line:
+            capture_docs = True
+            continue
+        if "Additional Notes:" in line:
+            capture_docs = False
+        if capture_docs and line.startswith("-"):
+            docs_lines.append(line)
+
+    clean_data["description_of_damage"] = " ".join(desc_lines)
+    clean_data["supporting_documents"] = " ".join(docs_lines)
+
+    # Additional Notes (on second page)
+    for line in lines:
+        if "The insured party" in line:
+            clean_data["additional_notes"] = line
             break
 
-        time.sleep(5)
-
-    if status == "SUCCEEDED":
-        output_key = f"processed/claims-extracted-data/{os.path.basename(s3_key)}_extracted.json"
-        try:
-            clean_json = json.dumps(result, indent=2)
-            s3.put_object(Bucket=s3_bucket, Key=output_key, Body=clean_json)
-            print(f"Textract results saved to s3://{s3_bucket}/{output_key}")
-        except Exception as e:
-            print(f"Error saving results: {e}")
-            sys.exit(1)
-    else:
-        print("Textract job failed.")
-        sys.exit(1)
-
-elif s3_key.lower().endswith('.txt'):
-    print("Text file detected. Copying directly to processed folder...")
-    output_key = f"processed/claims-extracted-data/{os.path.basename(s3_key)}_extracted.txt"
-
-    try:
-        s3.upload_file(local_file, s3_bucket, output_key)
-        print(f"Text file saved to s3://{s3_bucket}/{output_key}")
-    except Exception as e:
-        print(f"Error saving text file: {e}")
-        sys.exit(1)
-
+    # Upload clean JSON to S3
+    output_key = f"claims-extracted-data/clean-claim-{claim_id}.json"
+    s3.put_object(Bucket=s3_bucket, Key=output_key, Body=json.dumps(clean_data))
+    print(f"Clean claim data uploaded to s3://{s3_bucket}/{output_key}")
 else:
-    print("Unsupported file type. Skipping processing.")
-    sys.exit(1)
-
-print("Processing completed successfully.")
+    print("Unsupported file type.")
