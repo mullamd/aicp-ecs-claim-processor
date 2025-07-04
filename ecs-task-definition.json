@@ -1,0 +1,23 @@
+{
+  "family": "aicp-claim-processing-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::461512246753:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "aicp-claim-processing-container",
+      "image": "461512246753.dkr.ecr.us-east-1.amazonaws.com/aicp-claim-processing:latest",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/aicp-claim-processing-task",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
