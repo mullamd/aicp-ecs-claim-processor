@@ -1,64 +1,57 @@
-name: AICP CI/CD to Amazon ECR and ECS
+name: Build and Push to Amazon ECR
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]  # Runs when you push to main branch
 
 jobs:
-  build-push-deploy:
+  build-and-push:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Log in to Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v2
+      - name: Build Docker image
+        run: |
+          docker build -t aicp-claim-processing .
+          docker tag aicp-claim-processing:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/aicp-claim-processing:latest
 
-    - name: Build and Push Docker image to ECR
-      env:
-        ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-        ECR_REPOSITORY: aicp-claim-processing
-      run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      - name: Push Docker image to Amazon ECR
+        run: |
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/aicp-claim-processing:latest
 
-    - name: Register ECS Task Definition and Capture ARN
-      id: register_task
-      run: |
-        TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
-        echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
+      - name: Register ECS Task Definition and Capture ARN
+        id: register_task
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
 
-    - name: Deploy to ECS with Latest Task Definition
-      run: |
-        aws ecs update-service \
-          --cluster aicp-ecs-cluster \
-          --service aicp-claim-processing-service \
-          --task-definition ${{ env.TASK_DEF_ARN }} \
-          --force-new-deployment
+      - name: Send Email Notification
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "AICP ECS CI/CD Pipeline - ${{ job.status }}"
+          to: mm.cloudenginner@gmail.com
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            The AICP ECS claim-processing pipeline has completed.
 
-    - name: Send Email Notification
-      if: always()
-      uses: dawidd6/action-send-mail@v3
-      with:
-        server_address: smtp.gmail.com
-        server_port: 465
-        username: ${{ secrets.EMAIL_USERNAME }}
-        password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "AICP CI/CD Pipeline - ${{ job.status }}"
-        to: mm.cloudenginner@gmail.com
-        from: ${{ secrets.EMAIL_USERNAME }}
-        body: |
-          The AICP ECS claim-processing pipeline has completed.
-
-          Status: ${{ job.status }}
+            Status: ${{ job.status }}
