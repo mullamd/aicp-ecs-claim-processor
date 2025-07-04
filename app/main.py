@@ -35,7 +35,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         job_id = response["JobId"]
         print(f"Textract JobId: {job_id}")
     except Exception as e:
-    print(f"Textract start error: {e}")
+        print(f"Textract start error: {e}")
     sys.exit(1)
 
     while True:
