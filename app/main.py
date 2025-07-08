@@ -62,14 +62,18 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     def extract_value(keyword):
         for i, line in enumerate(lines):
             if keyword.lower() in line.lower():
-                parts = line.split(":")
+                parts = line.split(":", 1)
                 if len(parts) > 1 and parts[1].strip():
                     return parts[1].strip()
                 elif i + 1 < len(lines):
                     return lines[i + 1].strip()
-        return ""
+        return "N/A"  # fallback to avoid broken JSON
 
     claim_id = extract_value("Claim ID:")
+    if not claim_id or claim_id == "N/A":
+        print("Error: Claim ID is missing or invalid. Skipping file.")
+        sys.exit(1)
+
     clean_data = {
         "claim_id": claim_id,
         "policy_number": extract_value("Policy Number:"),
@@ -80,7 +84,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         "vehicle_details": extract_value("Vehicle Details:"),
         "estimated_damage_cost": extract_value("Estimated Damage Cost:"),
         "claim_amount_requested": extract_value("Claim Amount Requested:"),
-        "additional_notes": extract_value("Additional Notes:")  # Fixed here
+        "additional_notes": extract_value("Additional Notes:")
     }
 
     # Supporting Documents and Description of Damage (multi-line)
@@ -104,12 +108,15 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         if capture_docs and line.startswith("-"):
             docs_lines.append(line)
 
-    clean_data["description_of_damage"] = " ".join(desc_lines)
-    clean_data["supporting_documents"] = " ".join(docs_lines)
+    clean_data["description_of_damage"] = " ".join(desc_lines) if desc_lines else "N/A"
+    clean_data["supporting_documents"] = " ".join(docs_lines) if docs_lines else "N/A"
 
     # Upload clean JSON to S3 (correct path)
     output_key = f"processed/claims-extracted-data/clean-claim-{claim_id}.json"
-    s3.put_object(Bucket=s3_bucket, Key=output_key, Body=json.dumps(clean_data))
-    print(f"Clean claim data uploaded to s3://{s3_bucket}/{output_key}")
+    try:
+        s3.put_object(Bucket=s3_bucket, Key=output_key, Body=json.dumps(clean_data))
+        print(f"✅ Clean claim data uploaded to s3://{s3_bucket}/{output_key}")
+    except Exception as e:
+        print(f"Error uploading cleaned JSON: {e}")
 else:
     print("Unsupported file type.")
