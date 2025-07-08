@@ -80,7 +80,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         "vehicle_details": extract_value("Vehicle Details:"),
         "estimated_damage_cost": extract_value("Estimated Damage Cost:"),
         "claim_amount_requested": extract_value("Claim Amount Requested:"),
-        "additional_notes": ""
+        "additional_notes": extract_value("Additional Notes:")  # Fixed here
     }
 
     # Supporting Documents and Description of Damage (multi-line)
@@ -106,12 +106,6 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
 
     clean_data["description_of_damage"] = " ".join(desc_lines)
     clean_data["supporting_documents"] = " ".join(docs_lines)
-
-    # Additional Notes (on second page)
-    for line in lines:
-        if "The insured party" in line:
-            clean_data["additional_notes"] = line
-            break
 
     # Upload clean JSON to S3 (correct path)
     output_key = f"processed/claims-extracted-data/clean-claim-{claim_id}.json"
