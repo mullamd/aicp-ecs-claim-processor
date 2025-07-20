@@ -112,16 +112,16 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     clean_data["description_of_damage"] = " ".join(desc_lines) if desc_lines else "N/A"
     clean_data["supporting_documents"] = " ".join(docs_lines) if docs_lines else "N/A"
 
-    # 🛠️ Step 1: Extract vehicle_year, make, model, and license plate
+    # ✅ Step 1: Extract vehicle_year, make, model, license_plate from vehicle_details
     vehicle_details = clean_data.get("vehicle_details", "")
 
     vehicle_year_match = re.search(r"\b(19|20)\d{2}\b", vehicle_details)
-    vehicle_make_match = re.search(r"\b(19|20)\d{2}\s+(\w+)", vehicle_details)
-    vehicle_model_match = re.search(r"\b(19|20)\d{2}\s+\w+\s+([A-Za-z0-9\-]+)", vehicle_details)
+    vehicle_make_match = re.search(r"\b\d{4}\s+(\w+)", vehicle_details)
+    vehicle_model_match = re.search(r"\b\d{4}\s+\w+\s+([A-Za-z0-9\-]+)", vehicle_details)
     license_plate_match = re.search(r"License Plate\s+([A-Z0-9\-]+)", vehicle_details)
 
     clean_data["vehicle_year"] = vehicle_year_match.group(0) if vehicle_year_match else "N/A"
-    clean_data["vehicle_make"] = vehicle_make_match.group(2) if vehicle_make_match else "N/A"
+    clean_data["vehicle_make"] = vehicle_make_match.group(1) if vehicle_make_match else "N/A"
     clean_data["vehicle_model"] = vehicle_model_match.group(1) if vehicle_model_match else "N/A"
     clean_data["license_plate"] = license_plate_match.group(1) if license_plate_match else "N/A"
 
