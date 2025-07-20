@@ -3,6 +3,7 @@ import boto3
 import time
 import sys
 import json
+import re
 
 # Read environment variables
 s3_bucket = os.environ.get("S3_BUCKET")
@@ -67,7 +68,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
                     return parts[1].strip()
                 elif i + 1 < len(lines):
                     return lines[i + 1].strip()
-        return "N/A"  # fallback to avoid broken JSON
+        return "N/A"
 
     claim_id = extract_value("Claim ID:")
     if not claim_id or claim_id == "N/A":
@@ -87,7 +88,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         "additional_notes": extract_value("Additional Notes:")
     }
 
-    # Supporting Documents and Description of Damage (multi-line)
+    # Multi-line extraction: Damage Description and Supporting Documents
     desc_lines = []
     docs_lines = []
     capture_desc = capture_docs = False
@@ -111,7 +112,20 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     clean_data["description_of_damage"] = " ".join(desc_lines) if desc_lines else "N/A"
     clean_data["supporting_documents"] = " ".join(docs_lines) if docs_lines else "N/A"
 
-    # Upload clean JSON to S3 (correct path)
+    # 🛠️ Step 1: Extract vehicle_year, make, model, and license plate
+    vehicle_details = clean_data.get("vehicle_details", "")
+
+    vehicle_year_match = re.search(r"\b(19|20)\d{2}\b", vehicle_details)
+    vehicle_make_match = re.search(r"\b(19|20)\d{2}\s+(\w+)", vehicle_details)
+    vehicle_model_match = re.search(r"\b(19|20)\d{2}\s+\w+\s+([A-Za-z0-9\-]+)", vehicle_details)
+    license_plate_match = re.search(r"License Plate\s+([A-Z0-9\-]+)", vehicle_details)
+
+    clean_data["vehicle_year"] = vehicle_year_match.group(0) if vehicle_year_match else "N/A"
+    clean_data["vehicle_make"] = vehicle_make_match.group(2) if vehicle_make_match else "N/A"
+    clean_data["vehicle_model"] = vehicle_model_match.group(1) if vehicle_model_match else "N/A"
+    clean_data["license_plate"] = license_plate_match.group(1) if license_plate_match else "N/A"
+
+    # Upload clean JSON to S3
     output_key = f"processed/claims-extracted-data/clean-claim-{claim_id}.json"
     try:
         s3.put_object(Bucket=s3_bucket, Key=output_key, Body=json.dumps(clean_data))
