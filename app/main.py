@@ -1,3 +1,4 @@
+
 import os
 import boto3
 import time
@@ -43,8 +44,10 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         print(f"Textract start error: {e}")
         sys.exit(1)
 
-    # Poll for job completion
-    while True:
+    # Poll for job completion with timeout
+    max_wait = 60
+    waited = 0
+    while waited < max_wait:
         result = textract.get_document_text_detection(JobId=job_id)
         status = result['JobStatus']
 
@@ -56,6 +59,10 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
             sys.exit(1)
         else:
             time.sleep(5)
+            waited += 5
+    else:
+        print("Textract job timed out.")
+        sys.exit(1)
 
     # Process Textract result
     lines = [block['Text'] for block in result['Blocks'] if block['BlockType'] == 'LINE']
@@ -75,20 +82,7 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         print("Error: Claim ID is missing or invalid. Skipping file.")
         sys.exit(1)
 
-    clean_data = {
-        "claim_id": claim_id,
-        "policy_number": extract_value("Policy Number:"),
-        "claimant_name": extract_value("Claimant Name:"),
-        "date_of_loss": extract_value("Date of Loss:"),
-        "type_of_claim": extract_value("Type of Claim:"),
-        "accident_location": extract_value("Accident Location:"),
-        "vehicle_details": extract_value("Vehicle Details:"),
-        "estimated_damage_cost": extract_value("Estimated Damage Cost:"),
-        "claim_amount_requested": extract_value("Claim Amount Requested:"),
-        "additional_notes": extract_value("Additional Notes:")
-    }
-
-    # Multi-line extraction: Damage Description and Supporting Documents
+    # Multi-line extraction
     desc_lines = []
     docs_lines = []
     capture_desc = capture_docs = False
@@ -109,12 +103,24 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         if capture_docs and line.startswith("-"):
             docs_lines.append(line)
 
-    clean_data["description_of_damage"] = " ".join(desc_lines) if desc_lines else "N/A"
-    clean_data["supporting_documents"] = " ".join(docs_lines) if docs_lines else "N/A"
+    clean_data = {
+        "claim_id": claim_id,
+        "policy_number": extract_value("Policy Number:"),
+        "claimant_name": extract_value("Claimant Name:"),
+        "date_of_loss": extract_value("Date of Loss:"),
+        "policy_start_date": extract_value("Policy Start Date:"),
+        "type_of_claim": extract_value("Type of Claim:"),
+        "accident_location": extract_value("Accident Location:"),
+        "vehicle_details": extract_value("Vehicle Details:"),
+        "estimated_damage_cost": extract_value("Estimated Damage Cost:"),
+        "claim_amount_requested": extract_value("Claim Amount Requested:"),
+        "additional_notes": extract_value("Additional Notes:"),
+        "description_of_damage": " ".join(desc_lines) if desc_lines else "N/A",
+        "supporting_documents": " ".join(docs_lines) if docs_lines else "N/A"
+    }
 
-    # ✅ Step 1: Extract vehicle_year, make, model, license_plate from vehicle_details
+    # Vehicle parsing
     vehicle_details = clean_data.get("vehicle_details", "")
-
     vehicle_year_match = re.search(r"\b(19|20)\d{2}\b", vehicle_details)
     vehicle_make_match = re.search(r"\b\d{4}\s+(\w+)", vehicle_details)
     vehicle_model_match = re.search(r"\b\d{4}\s+\w+\s+([A-Za-z0-9\-]+)", vehicle_details)
