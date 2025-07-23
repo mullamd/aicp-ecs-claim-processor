@@ -1,4 +1,3 @@
-
 import os
 import boto3
 import time
@@ -44,12 +43,16 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         print(f"Textract start error: {e}")
         sys.exit(1)
 
-    # Poll for job completion with timeout
-    max_wait = 60
+    # Improved Polling for job completion with exponential backoff and longer timeout
+    max_wait = 180  # total max wait time in seconds
     waited = 0
+    sleep_time = 5
+    attempt = 1
+
     while waited < max_wait:
         result = textract.get_document_text_detection(JobId=job_id)
         status = result['JobStatus']
+        print(f"Attempt {attempt}: Textract job status: {status}")
 
         if status == 'SUCCEEDED':
             print("Textract job completed successfully.")
@@ -57,9 +60,13 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         elif status == 'FAILED':
             print("Textract job failed.")
             sys.exit(1)
-        else:
-            time.sleep(5)
-            waited += 5
+
+        time.sleep(sleep_time)
+        waited += sleep_time
+        attempt += 1
+
+        # Increase sleep time with a cap at 30 seconds
+        sleep_time = min(sleep_time * 2, 30)
     else:
         print("Textract job timed out.")
         sys.exit(1)
