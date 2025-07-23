@@ -4,6 +4,7 @@ import time
 import sys
 import json
 import re
+import random  # For simulating previous claims count
 
 # Read environment variables
 s3_bucket = os.environ.get("S3_BUCKET")
@@ -29,6 +30,11 @@ except Exception as e:
     print(f"Error downloading file: {e}")
     sys.exit(1)
 
+def get_previous_claims_count(policy_number):
+    # TODO: Replace with real database/API call
+    # Simulate previous claims count for now
+    return random.randint(0, 5)
+
 # Check file type
 if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     print("File type supported. Calling Textract Async API...")
@@ -43,8 +49,8 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         print(f"Textract start error: {e}")
         sys.exit(1)
 
-    # Improved Polling for job completion with exponential backoff and longer timeout
-    max_wait = 180  # total max wait time in seconds
+    # Polling for job completion with exponential backoff and longer timeout
+    max_wait = 180  # seconds
     waited = 0
     sleep_time = 5
     attempt = 1
@@ -64,14 +70,12 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
         time.sleep(sleep_time)
         waited += sleep_time
         attempt += 1
-
-        # Increase sleep time with a cap at 30 seconds
         sleep_time = min(sleep_time * 2, 30)
     else:
         print("Textract job timed out.")
         sys.exit(1)
 
-    # Process Textract result
+    # Extract text lines
     lines = [block['Text'] for block in result['Blocks'] if block['BlockType'] == 'LINE']
 
     def extract_value(keyword):
@@ -137,6 +141,9 @@ if s3_key.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg')):
     clean_data["vehicle_make"] = vehicle_make_match.group(1) if vehicle_make_match else "N/A"
     clean_data["vehicle_model"] = vehicle_model_match.group(1) if vehicle_model_match else "N/A"
     clean_data["license_plate"] = license_plate_match.group(1) if license_plate_match else "N/A"
+
+    # Enrich with previous claims count
+    clean_data["previous_claims_count"] = get_previous_claims_count(clean_data.get("policy_number", ""))
 
     # Upload clean JSON to S3
     output_key = f"processed/claims-extracted-data/clean-claim-{claim_id}.json"
