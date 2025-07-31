@@ -16,7 +16,6 @@
           "name": "S3_BUCKET",
           "value": "aicp-claims-data"
         }
-        // ❌ S3_OBJECT_KEY removed here (will be passed at runtime)
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
