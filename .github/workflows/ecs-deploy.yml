@@ -1,6 +1,8 @@
 name: Build and Push to Amazon ECR
 
 on:
+  push:
+    branches: [main]  # Automatically runs on push to main
   workflow_dispatch:
     inputs:
       claim_file_key:
@@ -13,7 +15,7 @@ jobs:
 
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      CLAIM_KEY: ${{ github.event.inputs.claim_file_key }}
+      CLAIM_KEY: ${{ github.event.inputs.claim_file_key || 'raw/claim-documents/sample-claim-document.pdf' }}
 
     steps:
       - name: Checkout code
@@ -51,18 +53,11 @@ jobs:
             --cluster aicp-ecs-cluster \
             --launch-type FARGATE \
             --task-definition ${{ env.TASK_DEF_ARN }} \
-            --network-configuration "awsvpcConfiguration={subnets=[subnet-02c673bb70ede8519],securityGroups=[sg-xxxxxxxx],assignPublicIp=ENABLED}" \
-            --overrides '{
-              "containerOverrides": [
-                {
-                  "name": "aicp-claim-processing-container",
-                  "environment": [
-                    { "name": "S3_BUCKET", "value": "aicp-claims-data" },
-                    { "name": "S3_OBJECT_KEY", "value": "'"${CLAIM_KEY}"'" }
-                  ]
-                }
-              ]
-            }'
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-02c673bb70ede8519],securityGroups=[sg-08cafba7e60d61975],assignPublicIp=ENABLED}" \
+            --overrides "$(jq -n \
+              --arg bucket "aicp-claims-data" \
+              --arg key "${{ env.CLAIM_KEY }}" \
+              '{ containerOverrides: [ { name: "aicp-claim-processing-container", environment: [ { name: "S3_BUCKET", value: $bucket }, { name: "S3_OBJECT_KEY", value: $key } ] } ] }')"
 
       - name: Send Email Notification
         if: always()
@@ -76,7 +71,8 @@ jobs:
           to: mm.cloudenginner@gmail.com
           from: ${{ secrets.EMAIL_USERNAME }}
           body: |
-            The AICP ECS claim-processing pipeline has completed.
+            ✅ ECS Claim Processing Complete
 
-            Claim file processed: ${{ github.event.inputs.claim_file_key }}
-            Status: ${{ job.status }}
+            📁 S3 Object Key: ${{ env.CLAIM_KEY }}
+            🟢 Status: ${{ job.status }}
+            🔗 GitHub: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
