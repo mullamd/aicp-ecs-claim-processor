@@ -1,8 +1,11 @@
 name: Build and Push to Amazon ECR
 
 on:
-  push:
-    branches: [ main ]  # Runs when you push to main branch
+  workflow_dispatch:
+    inputs:
+      claim_file_key:
+        description: 'S3 object key for the claim file (e.g., raw/claim-documents/claim_123.pdf)'
+        required: true
 
 jobs:
   build-and-push:
@@ -10,6 +13,7 @@ jobs:
 
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
+      CLAIM_KEY: ${{ github.event.inputs.claim_file_key }}
 
     steps:
       - name: Checkout code
@@ -39,6 +43,26 @@ jobs:
         run: |
           TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
+          echo "Registered task definition: $TASK_DEF_ARN"
+
+      - name: Run ECS Task with Dynamic S3 Object Key
+        run: |
+          aws ecs run-task \
+            --cluster aicp-ecs-cluster \
+            --launch-type FARGATE \
+            --task-definition ${{ env.TASK_DEF_ARN }} \
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-02c673bb70ede8519],securityGroups=[sg-xxxxxxxx],assignPublicIp=ENABLED}" \
+            --overrides '{
+              "containerOverrides": [
+                {
+                  "name": "aicp-claim-processing-container",
+                  "environment": [
+                    { "name": "S3_BUCKET", "value": "aicp-claims-data" },
+                    { "name": "S3_OBJECT_KEY", "value": "'"${CLAIM_KEY}"'" }
+                  ]
+                }
+              ]
+            }'
 
       - name: Send Email Notification
         if: always()
@@ -54,4 +78,5 @@ jobs:
           body: |
             The AICP ECS claim-processing pipeline has completed.
 
+            Claim file processed: ${{ github.event.inputs.claim_file_key }}
             Status: ${{ job.status }}
