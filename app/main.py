@@ -27,15 +27,15 @@ try:
             }
         },
         NotificationChannel={
-            "SNSTopicArn": "arn:aws:sns:us-east-1:461512246753:aicp-textract-callback-topic",  # 🔁 REPLACE
-            "RoleArn": "RoleArn": "arn:aws:iam::461512246753:role/TextractSNSRole"                        # 🔁 REPLACE
+            "SNSTopicArn": "arn:aws:sns:us-east-1:461512246753:aicp-textract-callback-topic",
+            "RoleArn": "arn:aws:iam::461512246753:role/TextractSNSRole"
         },
         JobTag=claim_id
     )
 
     print(f"✅ Textract job started for: s3://{s3_bucket}/{s3_key}")
-    print(f"📌 Job ID: {response['JobId']}")
-    print("🚪 ECS exiting — Textract will send result via SNS")
+    print(f"📄 Job ID: {response['JobId']}")
+    print("🔁 ECS exiting — Textract will send result via SNS")
 
 except Exception as e:
     print(f"❌ Textract start failed: {str(e)}")
