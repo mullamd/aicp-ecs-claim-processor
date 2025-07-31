@@ -7,7 +7,7 @@ on:
     inputs:
       claim_file_key:
         description: 'S3 object key for the claim file (e.g., raw/claim-documents/claim_123.pdf)'
-        required: true
+        required: false
 
 jobs:
   build-and-push:
@@ -15,7 +15,7 @@ jobs:
 
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      CLAIM_KEY: ${{ github.event.inputs.claim_file_key || 'raw/claim-documents/sample-claim-document.pdf' }}
+      CLAIM_KEY: ${{ github.event.inputs.claim_file_key != '' && github.event.inputs.claim_file_key || 'raw/claim-documents/sample-claim-document.pdf' }}
 
     steps:
       - name: Checkout code
@@ -43,20 +43,25 @@ jobs:
       - name: Register ECS Task Definition and Capture ARN
         id: register_task
         run: |
-          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://ecs-task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
           echo "Registered task definition: $TASK_DEF_ARN"
 
       - name: Run ECS Task with Dynamic S3 Object Key
         run: |
+          bucket="aicp-claims-data"
+          key="${{ env.CLAIM_KEY }}"
+
           aws ecs run-task \
             --cluster aicp-ecs-cluster \
             --launch-type FARGATE \
             --task-definition ${{ env.TASK_DEF_ARN }} \
-            --network-configuration "awsvpcConfiguration={subnets=[subnet-02c673bb70ede8519],securityGroups=[sg-08cafba7e60d61975],assignPublicIp=ENABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-02c673bb70ede8519],securityGroups=[sg-0446ae2a3834b378e],assignPublicIp=ENABLED}" \
             --overrides "$(jq -n \
-              --arg bucket "aicp-claims-data" \
-              --arg key "${{ env.CLAIM_KEY }}" \
+              --arg bucket "$bucket" \
+              --arg key "$key" \
               '{ containerOverrides: [ { name: "aicp-claim-processing-container", environment: [ { name: "S3_BUCKET", value: $bucket }, { name: "S3_OBJECT_KEY", value: $key } ] } ] }')"
 
       - name: Send Email Notification
